@@ -97,6 +97,7 @@ namespace GitUI
                     junctionColors.Clear();
                     graphData.Clear();
                     graphDataCount = 0;
+                    graphData.IsFilter = false;
                     RebuildGraph();
                 }
                 filterMode = FilterType.None;
@@ -134,18 +135,6 @@ namespace GitUI
                     });
                     syncContext.Send(method, this);
                 }
-            }
-        }
-
-        public void FilterClear()
-        {
-            lock (graphData)
-            {
-                foreach (Node n in graphData.Nodes.Values)
-                {
-                    n.IsFiltered = false;
-                }
-                graphData.IsFilter = false;
             }
         }
 
@@ -745,12 +734,7 @@ namespace GitUI
                 #region Make sure the graph cache bitmap is setup
                 int height = cacheCountMax * rowHeight;
                 int width = dataGridColumnGraph.Width;
-                if (graphBitmap == null ||
-                    //Resize the bitmap when the with or height is changed. The height won't change very often.
-                    //The with changes more often, when branches become visible/invisible.
-                    //Try to be 'smart' and not resize the bitmap for each little change. Enlarge when needed
-                    //but only shrink the bitmap when multiple branches disappear (50px diference).
-                    graphBitmap.Width < width || graphBitmap.Width > width - 50 || graphBitmap.Height != height)
+                if (graphBitmap == null || graphBitmap.Width != width || graphBitmap.Height != height)
                 {
                     if (graphBitmap != null)
                     {
@@ -1251,10 +1235,9 @@ namespace GitUI
                 LaneInfo this[int lane, int item] { get; }
             }
 
-            public List<Junction> Junctions = new List<Junction>();
-            public Dictionary<IComparable, Node> Nodes = new Dictionary<IComparable, Node>();
-
-            public List<Node> AddedNodes = new List<Node>();
+            private Dictionary<IComparable, Node> Nodes = new Dictionary<IComparable, Node>();
+            private List<Node> AddedNodes = new List<Node>();
+            private List<Junction> Junctions = new List<Junction>();
             
             private bool isFilter = false;
             public bool IsFilter
@@ -1263,7 +1246,6 @@ namespace GitUI
                 set
                 {
                     isFilter = value;
-                    lanes.Clear();
                     foreach (Node n in Nodes.Values)
                     {
                         n.InLane = int.MaxValue;
@@ -1272,6 +1254,7 @@ namespace GitUI
                     {
                         j.CurrentState = Junction.State.Unprocessed;
                     }
+                    lanes.Clear();
 
                     // We need to signal the DvcsGraph object that it needs to 
                     // redraw everything.
@@ -1283,20 +1266,16 @@ namespace GitUI
             {
                 Node node = Nodes[aId];
 
+                if (IsFilter)
+                {
+                    throw new InvalidOperationException("Unable to add items to filter when in filter mode");
+                }
+
                 if (!node.IsFiltered)
                 {
                     filterNodeCount++;
                     node.IsFiltered = true;
                 }
-
-                // Clear the filtered lane data. 
-                // TODO: We could be smart and only clear items after Node[aId]. The check
-                // below isn't valid, since it could be either the filtered or unfiltered
-                // lane...
-                //if (node.InLane != int.MaxValue)
-                //{
-                //    filteredLanes.Clear();
-                //}
             }
 
             public delegate void GraphUpdatedHandler(object sender);
@@ -1315,7 +1294,6 @@ namespace GitUI
                 {
                     Junctions.Add(new Junction(node, node));
                 }
-                nodeCount++;
                 node.Data = aData;
                 node.DataType = aType;
                 node.Index = AddedNodes.Count;
@@ -1414,11 +1392,9 @@ namespace GitUI
                 Junctions.Clear();
                 Nodes.Clear();
                 lanes.Clear();
-                nodeCount = 0;
                 filterNodeCount = 0;
             }
 
-            private int nodeCount = 0;
             private int filterNodeCount = 0;
             public int Count 
             { 
@@ -1430,9 +1406,14 @@ namespace GitUI
                     }
                     else
                     {
-                        return nodeCount;
+                        return AddedNodes.Count;
                     }
                 } 
+            }
+
+            public Node GetNode(int index)
+            {
+                return AddedNodes[index];
             }
 
             public void ProcessNode(Node aNode)
@@ -1663,6 +1644,8 @@ namespace GitUI
                         }
                     }
                 }
+
+                filterLanes();
             }
 
             public Graph.LaneRow this[int row]
@@ -1677,13 +1660,13 @@ namespace GitUI
                     if (row < laneRows.Count)
                     {
                         // DEBUG: This only works if not filtering
-                        if (sourceGraph.AddedNodes[row] != laneRows[row].Node) Debugger.Break();
+                        //if (sourceGraph.AddedNodes[row] != laneRows[row].Node) Debugger.Break();
 
                         return laneRows[row];
                     }
-                    else if (row < sourceGraph.AddedNodes.Count)
+                    else if (row < sourceGraph.Count)
                     {
-                        return new SavedLaneRow(sourceGraph.AddedNodes[row]);
+                        return new SavedLaneRow(sourceGraph.GetNode(row));
                     }
                     else
                     {
@@ -1803,11 +1786,11 @@ namespace GitUI
                 {
                     get
                     {
-                        if (node != null)
+                        if (node != null && index == 0)
                         {
                             return node;
                         }
-                        else if (index < junction.Bunch.Count)
+                        else if (junction != null && index < junction.Bunch.Count)
                         {
                             return junction.Bunch[index];
                         }
@@ -1880,7 +1863,17 @@ namespace GitUI
                 public Graph.LaneInfo Data;
                 public int Start;
 
-                public int End { get { return Data.ConnectLane; } }
+                public int End 
+                { 
+                    get 
+                    { 
+                        return Data.ConnectLane; 
+                    }
+                    set
+                    {
+                        Data.ConnectLane = value;
+                    }
+                }
 
                 public Edge(Graph.LaneInfo data, int start)
                 {
@@ -2090,6 +2083,16 @@ namespace GitUI
 
                     public void Add(int from, Graph.LaneInfo data)
                     {
+                        // If the lane already exists, add to it.
+                        foreach (Edge existing in edges)
+                        {
+                            if (existing.Start == from && existing.End == data.ConnectLane)
+                            {
+                                existing.Data.UnionWith(data);
+                                return;
+                            }
+                        }
+
                         Edge e = new Edge(data, from);
                         edges.Add(e);
 
@@ -2179,8 +2182,36 @@ namespace GitUI
                         return (countEnd[lane] > 0);
                     }
 
-                    private void Remove(int start, int end)
+                    public void Remove(int start)
                     {
+                        for( int i = 0; i < edges.Count; i++ )
+                        {
+                            if (edges[i].Start == start || edges[i].End == start)
+                            {
+                                countStart[edges[i].Start]--;
+                                countEnd[edges[i].End]--;
+                                edges.RemoveAt(i);
+                                i--;
+                                continue;
+                            }
+
+                            if (edges[i].Start > start)
+                            {
+                                Edge e = edges[i];
+                                countStart[e.Start]--;
+                                e.Start--;
+                                countStart[e.Start]++;
+                                edges[i] = e;
+                            }
+                            if (edges[i].End > start)
+                            {
+                                Edge e = edges[i];
+                                countEnd[e.End]--;
+                                e.End--;
+                                countEnd[e.End]++;
+                                edges[i] = e;
+                            }
+                        }
                     }
 
                 }
@@ -2241,7 +2272,7 @@ namespace GitUI
                 public void Collapse(int col)
                 {
                     int edgeCount = Math.Max(edges.CountCurrent(), edges.CountNext());
-                    for (int i = col; i < edgeCount; i++)
+                    for (int i = col+1; i < edgeCount; i++)
                     {
                         while (edges.CountNext(i) > 0)
                         {
@@ -2268,6 +2299,11 @@ namespace GitUI
                     }
                 }
 
+                public void Remove(int col)
+                {
+                    edges.Remove(col);
+                }
+
                 public void Replace(int aOld, int aNew)
                 {
                     for (int j = edges.CountNext(aOld) - 1; j >= 0; --j)
@@ -2276,6 +2312,21 @@ namespace GitUI
                         Graph.LaneInfo info = edges.RemoveNext(aOld, j, out start, out end);
                         info.ConnectLane = aNew;
                         edges.Add(start, info);
+                    }
+                }
+
+                public void Replace(int aOld, List<Graph.LaneInfo> aNew)
+                {
+                    for (int j = edges.CountNext(aOld) - 1; j >= 0; --j)
+                    {
+                        int start, end;
+                        Graph.LaneInfo info = edges.RemoveNext(aOld, j, out start, out end);
+                        //info.ConnectLane = aNew;
+                        foreach (Graph.LaneInfo newInfo in aNew)
+                        {
+                            newInfo.UnionWith(info);
+                            edges.Add(start, newInfo);
+                        }
                     }
                 }
 
@@ -2376,10 +2427,12 @@ namespace GitUI
                 {
                     return false;
                 }
-               
-                // Find the new current row's node (newest item in the row)
+
+                // Find the new current row's node (newest item in the row) and
+                // bring up any lanes that consuming that node makes available.
                 #region Find current node & index
-                currentRow.Node = null;
+                Node nextNode = null;
+                int nextLane = -1;
                 for (int curLane = 0; curLane < laneNodes.Count; curLane++)
                 {
                     LaneJunctionDetail lane = laneNodes[curLane];
@@ -2390,35 +2443,33 @@ namespace GitUI
 
                     // NOTE: We could also compare with sourceGraph sourceGraph.AddedNodes[sourceGraph.processedNodes],
                     // since it should always be the same value
-                    if (currentRow.Node == null ||
-                        currentRow.Node.Data == null ||
-                        (lane.Current.Data != null && lane.Current.Index < currentRow.Node.Index))
+                    if (nextNode == null ||
+                        nextNode.Data == null ||
+                        (lane.Current.Data != null && lane.Current.Index < nextNode.Index))
                     {
-                        currentRow.Node = lane.Current;
-                        currentRow.NodeLane = curLane;
+                        nextNode = lane.Current;
+                        nextLane = curLane;
                     }
                 }
-                if (currentRow.Node == null)
+                if (nextNode == null)
                 {
                     // DEBUG: The check above didn't find anything, but should have
                     if (Debugger.IsAttached) Debugger.Break();
                     //Node[] topo = this.sourceGraph.TopoSortedNodes();
                     return false;
                 }
-
                 // If this row doesn't contain data, we're to the end of the valid entries.
-                if (currentRow.Node.Data == null)
+                if (nextNode.Data == null)
                 {
                     return false;
                 }
+                sourceGraph.ProcessNode(nextNode);
+                currentRow.Node = nextNode;
+                currentRow.NodeLane = nextLane;
 
-                sourceGraph.ProcessNode(currentRow.Node);
-                #endregion
-                
                 // Check for multiple junctions with this node at the top. Remove the 
                 // node from that junction as well. This will happen when there is a branch 
-                #region Check for branches
-                currentRow.Clear(currentRow.NodeLane);
+                currentRow.Clear(nextLane);
                 for (int curLane = 0; curLane < laneNodes.Count; curLane++)
                 {
                     LaneJunctionDetail lane = laneNodes[curLane];
@@ -2427,7 +2478,7 @@ namespace GitUI
                         continue;
                     }
 
-                    if (currentRow.Node != lane.Current)
+                    if (nextNode != lane.Current)
                     {
                         // We're only interested in columns that have the same node
                         // at the top of the junction as the current row's node
@@ -2437,7 +2488,7 @@ namespace GitUI
                     // Remove the item from the lane, since it is being drawn now.
                     // We need to draw the graph line for this lane. If there are no items 
                     // left in the lane we don't draw it.
-                    int intoLane = advanceLane(curLane);
+                    int intoLane = advanceLane(curLane, nextLane);
                     if (intoLane < curLane)
                     {
                         // AdvanceLane could have removed lanes so we need to start from
@@ -2445,7 +2496,7 @@ namespace GitUI
                         // us to try to insert a node into the graph twice)
                         curLane = intoLane;
                     }
-                    
+
                     // Re-process the lane to make sure there are no actions left.
                     curLane--;
                 }
@@ -2455,7 +2506,7 @@ namespace GitUI
                 // and keep the lanes that merge next to each other.
                 #region Straighten out lanes
                 // Look for crossing lanes
-                for (int lane = 0; lane < currentRow.Count; lane++)
+                for (int lane = currentRow.Count - 1; lane >= 0; --lane)
                 {
                     for (int item = 0; item < currentRow.LaneInfoCount(lane); item++)
                     {
@@ -2483,36 +2534,6 @@ namespace GitUI
                         }
                     }
                 }
-
-                //// Keep the merge lanes next to each other
-                //int mergeFromCount = currentRow.LaneInfoCount(currentRow.NodeLane);
-                //if (mergeFromCount > 1)
-                //{
-                //    for (int i = 0; i < mergeFromCount; i++)
-                //    {
-                //        Graph.LaneInfo laneInfo = currentRow[currentRow.NodeLane, i];
-                //        // Check to see if the lane is currently next to us
-                //        if (laneInfo.ConnectLane - currentRow.NodeLane > mergeFromCount)
-                //        {
-                //            // Only move the lane if it isn't already being drawn.
-                //            if (currentRow.LaneInfoCount(laneInfo.ConnectLane) == 0)
-                //            {
-                //                // Remove the row laneInfo.ConnectLane and insert
-                //                // it at currentRow.NodeLane+1. 
-                //                // Then start over searching for others if i != mergeFromCount-1?
-                //                int adjacentLane = currentRow.NodeLane + 1;
-                //                if (adjacentLane >= laneNodes.Count) Debugger.Break();
-                //                currentRow.Expand(adjacentLane);
-                //                currentRow.Replace(laneInfo.ConnectLane + 1, adjacentLane);
-
-                //                LaneJunctionDetail temp = laneNodes[laneInfo.ConnectLane];
-                //                laneNodes.RemoveAt(laneInfo.ConnectLane);
-                //                laneNodes.Insert(adjacentLane, temp);
-                //            }
-                //        }
-                //    }
-                //}
-
                 #endregion
 
                 if (currentRow.Node != null)
@@ -2527,6 +2548,10 @@ namespace GitUI
 
                     row.Node.InLane = laneRows.Count;
                     laneRows.Add(row);
+
+                    // DEBUG:
+                    //Console.WriteLine(row.ToString());
+
                     return true;
                 }
                 else
@@ -2541,7 +2566,7 @@ namespace GitUI
             /// </summary>
             /// <param name="curLane">Index of the lane to advance</param>
             /// <returns>True if there will still be nodes in this lane</returns>
-            private int advanceLane(int curLane)
+            private int advanceLane(int curLane, int nextLane)
             {
                 LaneJunctionDetail lane = laneNodes[curLane];
                 int minLane = curLane;
@@ -2642,7 +2667,7 @@ namespace GitUI
                             laneNodes[right].Clear();
                             laneNodes.RemoveAt(right);
 
-                            currentRow.Add(currentRow.NodeLane, new Graph.LaneInfo(left, junction));
+                            currentRow.Add(nextLane, new Graph.LaneInfo(left, junction));
                             minLane = Math.Min(minLane, left);
                         }
                     }
@@ -2651,17 +2676,190 @@ namespace GitUI
                     // if it got merged above.
                     if (!lane.IsClear)
                     {
-                        currentRow.Add(currentRow.NodeLane, new Graph.LaneInfo(curLane, lane.Junction));
+                        currentRow.Add(nextLane, new Graph.LaneInfo(curLane, lane.Junction));
                     }
                 }
                 else // lane.Count > 1
                 {
-                    currentRow.Add(currentRow.NodeLane, new Graph.LaneInfo(curLane, lane.Junction));
+                    currentRow.Add(nextLane, new Graph.LaneInfo(curLane, lane.Junction));
                 }
+
+                filterLanes();
 
                 return curLane;
             }
 
+            private void filterLanes()
+            {
+                // If we're in filter mode, advance all lanes to nodes that start with
+                // filtered items.
+                if (!sourceGraph.IsFilter)
+                {
+                    return;
+                }
+
+                for (int i = 0; i < laneNodes.Count; i++)
+                {
+                    Node current = laneNodes[i].Current;
+                    if (current == null)
+                    {
+                        // This will happen for single node branches.
+                        laneNodes.RemoveAt(i);
+                        currentRow.Collapse(i);
+                        continue;
+                    }
+                    if (current.IsFiltered)
+                    {
+                        continue;
+                    }
+
+                    // Advance
+                    laneNodes[i].Next();
+
+                    // If there are no items left, bring the item's parents up.
+                    Junction junction = laneNodes[i].Junction;
+                    
+                    if (junction == null)
+                    {
+                        // No junction = no parents.
+                        i--;
+                        continue;
+                    }
+
+                    if (laneNodes[i].Count == 0)
+                    {
+                        Node h = junction.Parent;
+                        List<Graph.LaneInfo> addedInfo = new List<Graph.LaneInfo>();
+
+                        int activeLane = i;
+                        Queue<Junction> junctionQueue = new Queue<Junction>();
+                        foreach (Junction a in h.Ancestors)
+                        {
+                            junctionQueue.Enqueue(a);
+                        }
+                        while (junctionQueue.Count > 0)
+                        {
+                            Junction j = junctionQueue.Dequeue();
+                        
+                            if (j.CurrentState == Junction.State.Unprocessed)
+                            {
+                                LaneJunctionDetail detail = new LaneJunctionDetail(j);
+
+                                for (int added = 0; added < addedInfo.Count; added++)
+                                {
+                                    if (addedInfo[added].ConnectLane >= activeLane + 1)
+                                    {
+                                        Graph.LaneInfo temp = addedInfo[added];
+                                        temp.ConnectLane++;
+                                        addedInfo[added] = temp;
+                                    }
+                                }
+                                addedInfo.Add(new Graph.LaneInfo(activeLane + 1, j));
+                                currentRow.Expand(activeLane + 1);
+                                laneNodes.Insert(activeLane + 1, detail);
+                            }
+                            else if (j.CurrentState == Junction.State.Processing)
+                            {
+                                // Already exists. Point to the existing lane instead.
+                                for (int lane = 0; lane < laneNodes.Count; lane++)
+                                {
+                                    if (laneNodes[lane].Junction == j)
+                                    {
+                                        // Found it. Move the existing lane into our lane
+                                        // if our lane is lower
+                                        if (activeLane < lane)
+                                        {
+                                            int to = activeLane;
+                                            activeLane = lane;
+                                            LaneJunctionDetail temp = laneNodes[to];
+                                            laneNodes[to] = laneNodes[activeLane];
+                                            laneNodes[activeLane] = temp;
+                                            currentRow.Replace(to, activeLane);
+                                            addedInfo.Add(new Graph.LaneInfo(to, j));
+
+                                            // If the 'old' lane was in the added list, update it
+                                            for (int added = 0; added < addedInfo.Count; added++)
+                                            {
+                                                if (addedInfo[added].ConnectLane == activeLane)
+                                                {
+                                                    Graph.LaneInfo info = addedInfo[added];
+                                                    info.ConnectLane = to;
+                                                    addedInfo[added] = info;
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            addedInfo.Add(new Graph.LaneInfo(lane, j));
+                                        }
+
+                                        break;
+                                    }
+                                }
+                            }
+                            else if (j.CurrentState == Junction.State.Processed)
+                            {
+                                foreach (Junction a in j.Parent.Ancestors)
+                                {
+                                    junctionQueue.Enqueue(a);
+                                }
+                            }
+                        }
+
+                        currentRow.Replace(activeLane, addedInfo);
+                        currentRow.Collapse(activeLane);
+                        laneNodes.RemoveAt(activeLane);
+                    }
+                    else if (laneNodes[i].Count == 1)
+                    {
+                        // If any other lanes have this node on top, merge them together
+                        for (int j = 0; j < laneNodes.Count; j++)
+                        {
+                            if (j == i || i >= laneNodes.Count) continue;
+                            if (laneNodes[j].Current == laneNodes[i].Current)
+                            {
+                                int left;
+                                int right;
+                                if (j > i)
+                                {
+                                    left = i;
+                                    right = j;
+                                }
+                                else
+                                {
+                                    left = j;
+                                    right = i;
+                                }
+                                currentRow.Replace(right, left);
+                                currentRow.Collapse(right);
+                                laneNodes[right].Next(); // Move next first so the lane is fully processed.
+                                laneNodes[right].Clear();
+                                laneNodes.RemoveAt(right);
+                            }
+                        }
+                    }
+
+                    i--;
+                }
+
+                // Any items that aren't in a lane should be sorted by their top item
+                // so the graph looks pretty.
+                bool isSorted = false;
+                while (!isSorted)
+                {
+                    isSorted = true;
+                    for (int i = currentRow.CountNext; i < laneNodes.Count - 1; i++)
+                    {
+                        if (laneNodes[i].Current.Index > laneNodes[i + 1].Current.Index)
+                        {
+                            LaneJunctionDetail temp = laneNodes[i];
+                            laneNodes[i] = laneNodes[i + 1];
+                            laneNodes[i + 1] = temp;
+                            isSorted = false;
+                        }
+                    }
+                }
+            }
         } // end of class Lanes
 
     } // end of class DvcsGraph

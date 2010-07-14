@@ -271,13 +271,17 @@ namespace GitUI
             if (string.IsNullOrEmpty(filter))
                 return "";
             else
-                return " --regexp-ignore-case --grep=\"" + filter + "\" --committer=\"" + filter + "\" --author=\"" + filter + "\" ";
+                //return " --regexp-ignore-case --grep=\"" + filter + "\" --committer=\"" + filter + "\" --author=\"" + filter + "\" ";
+                return " --regexp-ignore-case --committer=\"" + filter + "\" --author=\"" + filter + "\" ";
         }
 
         ~RevisionGrid()
         {
             if (revisionGraphCommand != null)
                 revisionGraphCommand.Kill();
+
+            if (revisionGraphFilterCommand != null)
+                revisionGraphFilterCommand.Kill();
         }
 
         protected override void OnCreateControl()
@@ -337,6 +341,7 @@ namespace GitUI
         }
 
         GitCommands.RevisionGraph revisionGraphCommand = null;
+        GitCommands.RevisionGraph revisionGraphFilterCommand = null;
 
         public void RefreshRevisions()
         {
@@ -357,16 +362,9 @@ namespace GitUI
 
                 LastScrollPos = Revisions.FirstDisplayedScrollingRowIndex;
 
-                //Hide graph column when there it is disabled OR when a filter is active
-                if (!Settings.ShowRevisionGraph || !string.IsNullOrEmpty(Filter))
-                {
-                    Revisions.ShowHideRevisionGraph(false);
-                }
-                else
-                {
-                    Revisions.ShowHideRevisionGraph(true);
-                }
-
+                // Hide graph column when there it is disabled
+                Revisions.ShowHideRevisionGraph(Settings.ShowRevisionGraph);
+                
                 Error.Visible = false;
                 NoCommits.Visible = false;
                 NoGit.Visible = false;
@@ -385,6 +383,10 @@ namespace GitUI
                 if (revisionGraphCommand != null)
                 {
                     revisionGraphCommand.Kill();
+                }
+                if (revisionGraphFilterCommand != null)
+                {
+                    revisionGraphFilterCommand.Kill();
                 }
 
                 string newCurrentCheckout = GitCommands.GitCommands.GetCurrentCheckout();
@@ -415,13 +417,14 @@ namespace GitUI
                     return;
                 }
 
+                Revisions.FilterMode = DvcsGraph.FilterType.None;
                 Revisions.Enabled = false;
                 Loading.Visible = true;
                 indexWatcher.Reset();
                 revisionGraphCommand = new RevisionGraph();
-                revisionGraphCommand.LogParam = LogParam + Filter;
-                revisionGraphCommand.Updated += new EventHandler(gitGetCommitsCommand_Updated);
-                revisionGraphCommand.Exited += new EventHandler(gitGetCommitsCommand_Exited);
+                revisionGraphCommand.LogParam = LogParam;
+                revisionGraphCommand.Updated += new EventHandler(revisionGraphCommand_Updated);
+                revisionGraphCommand.Exited += new EventHandler(revisionGraphCommand_Exited);
                 revisionGraphCommand.Execute();
 
                 LoadRevisions();
@@ -433,16 +436,37 @@ namespace GitUI
             }
         }
 
-        void gitGetCommitsCommand_Updated(object sender, EventArgs e)
+        void revisionGraphCommand_Updated(object sender, EventArgs e)
         {
             RevisionGraph.RevisionGraphUpdatedEvent updatedEvent = (RevisionGraph.RevisionGraphUpdatedEvent)e;
             update(updatedEvent.Revision);
         }
-        
-        void gitGetCommitsCommand_Exited(object sender, EventArgs e)
+
+        void revisionGraphCommand_Exited(object sender, EventArgs e)
         {
             Revisions.SetExpectedRowCount(revisionGraphCommand.Revisions.Count);
+            if (!string.IsNullOrEmpty(Filter))
+            {
+                revisionGraphFilterCommand = new RevisionGraph();
+                revisionGraphFilterCommand.ShaOnly = true;
+                revisionGraphFilterCommand.LogParam = LogParam + Filter;
+                revisionGraphFilterCommand.Updated += new EventHandler(revisionGraphFilterCommand_Updated);
+                revisionGraphFilterCommand.Exited += new EventHandler(revisionGraphFilterCommand_Exited);
+                revisionGraphFilterCommand.Execute();
+            }
             update(null);
+        }
+
+        void revisionGraphFilterCommand_Updated(object sender, EventArgs e)
+        {
+            RevisionGraph.RevisionGraphUpdatedEvent updatedEvent = (RevisionGraph.RevisionGraphUpdatedEvent)e;
+            Revisions.Filter(updatedEvent.Revision.Guid);
+        }
+
+        void revisionGraphFilterCommand_Exited(object sender, EventArgs e)
+        {
+            //Revisions.FilterMode = DvcsGraph.FilterType.Highlight;
+            Revisions.FilterMode = DvcsGraph.FilterType.Hide;
         }
 
         void update(GitRevision rev)
