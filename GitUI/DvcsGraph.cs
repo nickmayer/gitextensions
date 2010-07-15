@@ -27,6 +27,7 @@ namespace GitUI
             None,
             Highlight,
             Hide,
+            All,
         }
 
         public DvcsGraph()
@@ -127,7 +128,7 @@ namespace GitUI
                             lock (graphData)
                             {
                                 filterMode = value;
-                                graphData.IsFilter = (filterMode & FilterType.Hide) == FilterType.Hide;
+                                graphData.IsFilter = ( filterMode == FilterType.Hide );
                                 RebuildGraph();
                             }
                             setRowCount(graphData.Count);
@@ -347,7 +348,11 @@ namespace GitUI
 
             lock (backgroundThread)
             {
-                if (CurrentCell == null)
+                if (filterMode == FilterType.All)
+                {
+                    RowCount = 0;
+                }
+                else if (CurrentCell == null)
                 {
                     RowCount = count;
                     CurrentCell = null;
@@ -496,6 +501,11 @@ namespace GitUI
         {
             lock (backgroundThread)
             {
+                if (filterMode == FilterType.All)
+                {
+                    return;
+                }
+
                 visibleTop = FirstDisplayedCell == null ? 0 : FirstDisplayedCell.RowIndex;
                 visibleBottom = visibleTop + rowHeight > 0 ? (Height / rowHeight) : 0;
 

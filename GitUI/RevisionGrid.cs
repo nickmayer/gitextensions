@@ -448,7 +448,7 @@ namespace GitUI
                     return;
                 }
 
-                Revisions.FilterMode = DvcsGraph.FilterType.None;
+                Revisions.FilterMode = string.IsNullOrEmpty(Filter) ? DvcsGraph.FilterType.None : DvcsGraph.FilterType.All;
                 Revisions.Enabled = false;
                 Loading.Visible = true;
                 indexWatcher.Reset();
@@ -519,7 +519,6 @@ namespace GitUI
 
         void revisionGraphFilterCommand_Exited(object sender, EventArgs e)
         {
-            //Revisions.FilterMode = DvcsGraph.FilterType.Highlight;
             Revisions.FilterMode = DvcsGraph.FilterType.Hide;
         }
 
