@@ -653,6 +653,7 @@ namespace GitUI
             return colors;
         }
 
+        private Node selectedNode = null;
         private Color getJunctionColor(Junction aJunction)
         {
             // http://en.wikipedia.org/wiki/File:RBG_color_wheel.svg
@@ -669,7 +670,9 @@ namespace GitUI
                 Color.Green,
                 Color.Chartreuse,
                 Color.Gold,
-                Color.Orange
+                Color.Orange,
+
+                Color.FromArgb(223,223,223)
             };
             // This is the order to grab the colors in.
             int[] preferedColors = { 4, 8, 6, 10, 2, 5, 7, 3, 9, 1, 11 };
@@ -680,46 +683,72 @@ namespace GitUI
                 return possibleColors[colorIndex];
             }
 
-
-            // Get adjacent junctions
-            List<Junction> adjacentJunctions = new List<Junction>();
-            List<int> adjacentColors = new List<int>();
-            adjacentJunctions.AddRange(aJunction.Child.Ancestors);
-            adjacentJunctions.AddRange(aJunction.Child.Descendants);
-            adjacentJunctions.AddRange(aJunction.Parent.Ancestors);
-            adjacentJunctions.AddRange(aJunction.Parent.Descendants);
-            foreach (Junction peer in adjacentJunctions)
+            // TODO: Pass this in instead:
+            if (selectedNode == null)
             {
-                if (junctionColors.TryGetValue(peer, out colorIndex))
+                string guid = GitCommands.GitCommands.GetCurrentCheckout();
+                graphData.Nodes.TryGetValue(guid, out selectedNode);
+                if (selectedNode == null)
                 {
-                    adjacentColors.Add(colorIndex);
-                }
-                else
-                {
-                    colorIndex = -1;
+                    // TODO: This could happen...in order to properly color we need to wait
+                    // until it gets read in...
+                    Debugger.Break();
                 }
             }
-
-            if (adjacentColors.Count == 0)
+            if (!selectedNode.RelatedTo(aJunction))
             {
-                colorIndex = 0;
+                colorIndex = possibleColors.Length - 1;
             }
             else
             {
-                int start = adjacentColors[0];
-                int i;
-                for (i = 0; i < preferedColors.Length; i++)
+                // Get adjacent junctions
+                List<Junction> adjacentJunctions = new List<Junction>();
+                List<int> adjacentColors = new List<int>();
+                adjacentJunctions.AddRange(aJunction.Child.Ancestors);
+                adjacentJunctions.AddRange(aJunction.Child.Descendants);
+                adjacentJunctions.AddRange(aJunction.Parent.Ancestors);
+                adjacentJunctions.AddRange(aJunction.Parent.Descendants);
+                foreach (Junction peer in adjacentJunctions)
                 {
-                    colorIndex = (start + preferedColors[i]) % possibleColors.Length;
-                    if (!adjacentColors.Contains(colorIndex))
+                    if (junctionColors.TryGetValue(peer, out colorIndex))
                     {
-                        break;
+                        adjacentColors.Add(colorIndex);
+                    }
+                    else
+                    {
+                        colorIndex = -1;
                     }
                 }
-                if (i == preferedColors.Length)
+
+                if (adjacentColors.Count == 0)
                 {
-                    Random r = new Random();
-                    colorIndex = r.Next(preferedColors.Length);
+                    colorIndex = 0;
+                }
+                else
+                {   int i;
+                    int start = 0;
+                    for (i = 0; i < adjacentColors.Count; i++)
+                    {
+                        start = adjacentColors[i];
+                        if (start < preferedColors.Length - 1)
+                        {
+                            break;
+                        }
+                    }
+                    
+                    for (i = 0; i < preferedColors.Length; i++)
+                    {
+                        colorIndex = (start + preferedColors[i]) % (possibleColors.Length-1);
+                        if (!adjacentColors.Contains(colorIndex))
+                        {
+                            break;
+                        }
+                    }
+                    if (i == preferedColors.Length)
+                    {
+                        Random r = new Random();
+                        colorIndex = r.Next(preferedColors.Length);
+                    }
                 }
             }
 
@@ -1047,6 +1076,54 @@ namespace GitUI
                 Id = aId;
             }
 
+            public bool RelatedTo(Junction aJunction)
+            {
+                Queue<Junction> junctions = new Queue<Junction>();
+                foreach (Junction j in Descendants)
+                {
+                    if (j == aJunction)
+                    {
+                        return true;
+                    }
+                    junctions.Enqueue(j);
+                }
+                while (junctions.Count > 0)
+                {
+                    Junction j = junctions.Dequeue();
+                    if (j == aJunction)
+                    {
+                        return true;
+                    }
+                    foreach (Junction j2 in j.Child.Descendants)
+                    {
+                        junctions.Enqueue(j2);
+                    }
+                }
+
+                foreach (Junction j in Ancestors)
+                {
+                    if (j == aJunction)
+                    {
+                        return true;
+                    }
+                    junctions.Enqueue(j);
+                }
+                while (junctions.Count > 0)
+                {
+                    Junction j = junctions.Dequeue();
+                    if (j == aJunction)
+                    {
+                        return true;
+                    }
+                    foreach (Junction j2 in j.Parent.Ancestors)
+                    {
+                        junctions.Enqueue(j2);
+                    }
+                }
+
+                return false;
+            }
+			
             public bool IsActive
             {
                 get { return (DataType & DataType.Active) == DataType.Active; }
