@@ -16,6 +16,7 @@ namespace GitUI
 {
     public partial class RevisionGrid : GitExtensionsControl
     {
+        private readonly GitRevision _initialSelectedRevision;
         TranslationString authorDate = new TranslationString("AuthorDate");
         TranslationString commitDate = new TranslationString("CommitDate");
         TranslationString messageCaption = new TranslationString("Message");
@@ -32,8 +33,14 @@ namespace GitUI
         private readonly SynchronizationContext syncContext;
         IndexWatcher indexWatcher = new IndexWatcher();
 
-        public RevisionGrid()
+
+        public RevisionGrid():this(null)
+        {            
+        }
+
+        public RevisionGrid(GitRevision initialSelectedRevision)
         {
+            _initialSelectedRevision = initialSelectedRevision;
             syncContext = SynchronizationContext.Current;
 
             base.InitLayout();
@@ -311,6 +318,15 @@ namespace GitUI
 
         public event EventHandler SelectionChanged;
 
+        public void SetSelectedIndex(int index)
+        {
+            Revisions.ClearSelection();
+
+            Revisions.Rows[index].Selected = true;
+
+            Revisions.Select();
+        }
+
         public void SetSelectedRevision(GitRevision revision)
         {
             Revisions.ClearSelection();
@@ -475,26 +491,24 @@ namespace GitUI
             if (revisionGraphCommand.Revisions.Count == 0)
             {
                 // This has to happen on the UI thread
-                SendOrPostCallback method = new SendOrPostCallback(delegate(object o)
-                {
-                    NoGit.Visible = false;
-                    NoCommits.Visible = true;
-                    Revisions.Visible = false;
-                    Loading.Visible = false;
-                });
-
-                syncContext.Send(method, this);
+                syncContext.Send(o =>
+                                     {
+                                         NoGit.Visible = false;
+                                         NoCommits.Visible = true;
+                                         Revisions.Visible = false;
+                                         Loading.Visible = false;
+                                     }, this);
             }
             else
             {
                 // This has to happen on the UI thread
-                SendOrPostCallback method = new SendOrPostCallback(delegate(object o)
-                {
-                    Loading.Visible = false;
-                });
-
-                syncContext.Send(method, this);
+                syncContext.Send(o =>
+                                     {
+                                         Loading.Visible = false;
+                                         SelectInitialRevision();
+                                     }, this);
             }
+        
 		}
 
         void revisionGraphFilterCommand_Updated(object sender, EventArgs e)
@@ -507,7 +521,16 @@ namespace GitUI
         {
             //Revisions.FilterMode = DvcsGraph.FilterType.Highlight;
             Revisions.FilterMode = DvcsGraph.FilterType.Hide;
+        }
 
+        private void SelectInitialRevision()
+        {
+            if (Revisions.SelectedRows.Count != 0 || _initialSelectedRevision == null) return;
+            for (int i = 0; i < revisionGraphCommand.Revisions.Count; i++)
+            {
+                if(revisionGraphCommand.Revisions[i].Guid == _initialSelectedRevision.Guid)
+                    SetSelectedIndex(i);
+            }
         }
 
         void update(GitRevision rev)
