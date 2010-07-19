@@ -326,7 +326,6 @@ namespace GitUI
         private int graphDataCount = 0;
         private int visibleTop = 0;
         private int visibleBottom = 0;
-        private bool isLoading = false;
 
         private void RebuildGraph()
         {
@@ -507,7 +506,7 @@ namespace GitUI
                 }
 
                 visibleTop = FirstDisplayedCell == null ? 0 : FirstDisplayedCell.RowIndex;
-                visibleBottom = visibleTop + rowHeight > 0 ? (Height / rowHeight) : 0;
+                visibleBottom = rowHeight > 0 ? visibleTop + (Height / rowHeight) : visibleTop;
 
                 if (visibleBottom > graphData.Count)
                 {
@@ -1671,9 +1670,7 @@ namespace GitUI
 
                     if (row < laneRows.Count)
                     {
-                        // DEBUG: This only works if not filtering
                         //if (sourceGraph.AddedNodes[row] != laneRows[row].Node) Debugger.Break();
-
                         return laneRows[row];
                     }
                     else if (row < sourceGraph.Count)
@@ -2439,7 +2436,7 @@ namespace GitUI
                 {
                     return false;
                 }
-
+               
                 // Find the new current row's node (newest item in the row) and
                 // bring up any lanes that consuming that node makes available.
                 #region Find current node & index
@@ -2587,9 +2584,11 @@ namespace GitUI
                 lane.Next();
 
                 // See if we can pull up ancestors
-                if (lane.Junction == null)
+                if (lane.Count == 0 && lane.Junction == null)
                 {
-                    // Handle a single node branch. Nothing to do.
+                    // Handle a single node branch.
+                    currentRow.Collapse(curLane);
+                    laneNodes.RemoveAt(curLane);
                 }
                 else if (lane.Count == 0)
                 {
@@ -2663,6 +2662,7 @@ namespace GitUI
                         {
                             int left;
                             int right;
+                            Junction junction = laneNodes[curLane].Junction;
                             if (i > curLane)
                             {
                                 left = curLane;
@@ -2672,10 +2672,10 @@ namespace GitUI
                             {
                                 left = i;
                                 right = curLane;
+                                curLane = i;
                             }
                             currentRow.Replace(right, left);
                             currentRow.Collapse(right);
-                            Junction junction = laneNodes[curLane].Junction;
                             laneNodes[right].Clear();
                             laneNodes.RemoveAt(right);
 

@@ -1,266 +1,194 @@
 ﻿using System;
-using System.Windows.Forms;
-using GitUI;
 using System.IO;
+using System.Windows.Forms;
 using GitCommands;
+using GitUI;
 
 namespace GitExtensions
 {
-    static class Program
+    internal static class Program
     {
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        private static void Main()
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
             string[] args = Environment.GetCommandLineArgs();
-            {
-                FormSplash formSplash = new FormSplash();
-                formSplash.Show();
-                formSplash.SetAction("Load settings");
-                GitCommands.Settings.LoadSettings();
-                //Quick HOME check:
-                formSplash.SetAction("Check home path");
-                FormFixHome.CheckHomePath();
-                //Register plugins
-                formSplash.SetAction("Load plugins");
-                PluginLoader.Load();
+            var formSplash = new FormSplash();
+            formSplash.Show();
+            formSplash.SetAction("Load settings");
+            Settings.LoadSettings();
+            //Quick HOME check:
+            formSplash.SetAction("Check home path");
+            FormFixHome.CheckHomePath();
+            //Register plugins
+            formSplash.SetAction("Load plugins");
+            PluginLoader.Load();
 
-                try
+            try
+            {
+                if (Application.UserAppDataRegistry == null ||
+                    Application.UserAppDataRegistry.GetValue("checksettings") == null ||
+                    Application.UserAppDataRegistry.GetValue("checksettings").ToString() == "true")
                 {
-                    if (Application.UserAppDataRegistry == null ||
-                        Application.UserAppDataRegistry.GetValue("checksettings") == null ||
-                        Application.UserAppDataRegistry.GetValue("checksettings").ToString() == "true")
+                    formSplash.SetAction("Check settings");
+                    var settings = new FormSettings();
+                    if (!settings.CheckSettings())
                     {
-                        formSplash.SetAction("Check settings");
-                        var settings = new FormSettings();
-                        if (!settings.CheckSettings())
-                        {
-                            FormSettings.AutoSolveAllSettings();
-                            //Application.Run();
-                            GitUICommands.Instance.StartSettingsDialog();
-                        }
+                        FormSettings.AutoSolveAllSettings();
+                        GitUICommands.Instance.StartSettingsDialog();
                     }
                 }
-                catch
-                {
-                }
-
-                formSplash.Close();
             }
+            catch
+            {
+            }
+
+            formSplash.Close();
 
             if (args.Length >= 3)
             {
                 if (Directory.Exists(args[2]))
-                    GitCommands.Settings.WorkingDir = args[2];
+                    Settings.WorkingDir = args[2];
 
-                if (string.IsNullOrEmpty(GitCommands.Settings.WorkingDir))
+                if (string.IsNullOrEmpty(Settings.WorkingDir))
                 {
                     if (args[2].Contains("\\"))
-                        GitCommands.Settings.WorkingDir = args[2].Substring(0, args[2].LastIndexOf('\\'));
+                        Settings.WorkingDir = args[2].Substring(0, args[2].LastIndexOf('\\'));
                 }
 
-                if (GitCommands.Settings.ValidWorkingDir())
-                    Repositories.RepositoryHistory.AddMostRecentRepository(GitCommands.Settings.WorkingDir);
+                if (Settings.ValidWorkingDir())
+                    Repositories.RepositoryHistory.AddMostRecentRepository(Settings.WorkingDir);
             }
 
-            if (string.IsNullOrEmpty(GitCommands.Settings.WorkingDir))
-                GitCommands.Settings.WorkingDir = Directory.GetCurrentDirectory();
+            if (string.IsNullOrEmpty(Settings.WorkingDir))
+                Settings.WorkingDir = Directory.GetCurrentDirectory();
 
             if (args.Length <= 1)
             {
-                ////Application.Run();
                 GitUICommands.Instance.StartBrowseDialog();
                 return;
             }
             // if we are here args.Length > 1
-            runCommand(args);
+            RunCommand(args);
 
-            GitCommands.Settings.SaveSettings();
+            Settings.SaveSettings();
         }
 
-        private static void runCommand(string[] args)
+        private static void RunCommand(string[] args)
         {
-            if (args[1] == "mergeconflicts")
+            switch (args[1])
             {
-                //Application.Run();
-                GitUICommands.Instance.StartResolveConflictsDialog();
-                return;
-            }
-            if (args[1] == "gitbash")
-            {
-                GitCommands.GitCommands.RunBash();
-                return;
-            }
-            if (args[1] == "gitignore")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartEditGitIgnoreDialog();
-                return;
-            }
-            if (args[1] == "remotes")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartRemotesDialog();
-                return;
-            }
-            if (args[1] == "browse")
-            {
-                                    string filter = "";
-                                    if (args.Length > 2 && args[2].StartsWith("-filter="))
-                                    {
-                                        filter = args[2].Replace("-filter=", "");
-                                    }
-                                    GitUICommands.Instance.StartBrowseDialog(filter);
-            }
-            if (args[1] == "addfiles" || args[1] == "add")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartAddFilesDialog();
-                return;
+                case "mergeconflicts":
+                    GitUICommands.Instance.StartResolveConflictsDialog();
+                    return;
+                case "gitbash":
+                    GitCommands.GitCommands.RunBash();
+                    return;
+                case "gitignore":
+                    GitUICommands.Instance.StartEditGitIgnoreDialog();
+                    return;
+                case "remotes":
+                    GitUICommands.Instance.StartRemotesDialog();
+                    return;
+                case "browse":
+                    GitUICommands.Instance.StartBrowseDialog(GetParameterOrEmptyStringAsDefault(args, "-filter"));
+                    return;
+                case "add":
+                case "addfiles":
+                    GitUICommands.Instance.StartAddFilesDialog();
+                    return;
+                case "apply":
+                case "applypatch":
+                    GitUICommands.Instance.StartApplyPatchDialog();
+                    return;
+                case "branch":
+                    GitUICommands.Instance.StartCreateBranchDialog();
+                    return;
+                case "checkout":
+                case "checkoutbranch":
+                    GitUICommands.Instance.StartCheckoutBranchDialog();
+                    return;
+                case "checkoutrevision":
+                    GitUICommands.Instance.StartCheckoutRevisionDialog();
+                    return;
+                case "init":
+                    if (args.Length > 2)
+                        GitUICommands.Instance.StartInitializeDialog(args[2]);
+                    else
+                        GitUICommands.Instance.StartInitializeDialog();
+                    return;
+                case "clone":
+                    GitUICommands.Instance.StartCloneDialog();
+                    return;
+                case "commit":
+                    GitUICommands.Instance.StartCommitDialog();
+                    return;
+                case "filehistory":
+                    if (args.Length > 2)
+                    {
+                        //Remove working dir from filename. This is to prevent filenames that are too
+                        //long while there is room left when the workingdir was not in the path.
+                        string fileName = args[2].Replace(Settings.WorkingDir, "").Replace('\\', '/');
 
+                        GitUICommands.Instance.StartFileHistoryDialog(fileName);
+                    }
+                    else
+                        MessageBox.Show("Cannot open hile history, there is no file selected.", "File history");
+                    return;
+                case "formatpatch":
+                    GitUICommands.Instance.StartFormatPatchDialog();
+                    return;
+                case "pull":
+                    GitUICommands.Instance.StartPullDialog();
+                    return;
+                case "push":
+                    GitUICommands.Instance.StartPushDialog();
+                    return;
+                case "settings":
+                    GitUICommands.Instance.StartSettingsDialog();
+                    return;
+                case "viewdiff":
+                    GitUICommands.Instance.StartCompareRevisionsDialog();
+                    return;
+                case "rebase":
+                    GitUICommands.Instance.StartRebaseDialog(null);
+                    return;
+                case "merge":
+                    GitUICommands.Instance.StartMergeBranchDialog(null);
+                    return;
+                case "cherry":
+                    GitUICommands.Instance.StartCherryPickDialog();
+                    return;
+                case "revert":
+                    Application.Run(new FormRevert(args[2]));
+                    return;
+                case "tag":
+                    GitUICommands.Instance.StartCreateTagDialog();
+                    return;
+                case "about":
+                    Application.Run(new AboutBox());
+                    return;
+                case "stash":
+                    GitUICommands.Instance.StartStashDialog();
+                    return;
+                default:
+                    Application.Run(new FormCommandlineHelp());
+                    return;
             }
-            if (args[1] == "applypatch" || args[1] == "apply")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartApplyPatchDialog();
-                return;
-            }
-            if (args[1] == "branch")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCreateBranchDialog();
-                return;
-            }
-            if (args[1] == "checkoutbranch" || args[1] == "checkout")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCheckoutBranchDialog();
-                return;
-            }
-            if (args[1] == "checkoutrevision")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCheckoutRevisionDialog();
-                return;
-            }
-            if (args[1] == "init")
-            {
-                //Application.Run();
-                if (args.Length > 2)
-                    GitUICommands.Instance.StartInitializeDialog(args[2]);
-                else
-                    GitUICommands.Instance.StartInitializeDialog();
-                return;
-            }
-            if (args[1] == "clone")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCloneDialog();
-                return;
-            }
-            if (args[1] == "commit")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCommitDialog();
-                return;
-            }
-            if (args[1] == "filehistory")
-            {
-                if (args.Length > 2)
-                {
-                    //Remove working dir from filename. This is to prevent filenames that are too
-                    //long while there is room left when the workingdir was not in the path.
-                    string fileName = args[2].Replace(Settings.WorkingDir, "").Replace('\\', '/');
+        }
 
-                    //Application.Run();
-                    GitUICommands.Instance.StartFileHistoryDialog(fileName);
+        private static string GetParameterOrEmptyStringAsDefault(string[] args, string paramName)
+        {
+            foreach (string arg in args)
+                if (arg.StartsWith(paramName + "="))
+                    return args[2].Replace(paramName + "=", "");
 
-                }
-                else
-                    MessageBox.Show("Cannot open hile history, there is no file selected.", "File history");
-                return;
-            }
-            if (args[1] == "formatpatch")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartFormatPatchDialog();
-                return;
-            }
-            if (args[1] == "pull")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartPullDialog();
-                return;
-            }
-            if (args[1] == "push")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartPushDialog();
-                return;
-            }
-            if (args[1] == "settings")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartSettingsDialog();
-                return;
-            }
-            if (args[1] == "viewdiff")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCompareRevisionsDialog();
-                return;
-            }
-            if (args[1] == "rebase")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartRebaseDialog(null);
-                return;
-            }
-
-            if (args[1] == "merge")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartMergeBranchDialog(null);
-                return;
-            }
-
-            if (args[1] == "cherry")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCherryPickDialog();
-                return;
-            }
-
-            if (args[1] == "revert")
-            {
-                Application.Run(new FormRevert(args[2]));
-                return;
-            }
-
-            if (args[1] == "tag")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartCreateTagDialog();
-                return;
-            }
-            if (args[1] == "about")
-            {
-                Application.Run(new AboutBox());
-                return;
-            }
-            if (args[1] == "stash")
-            {
-                //Application.Run();
-                GitUICommands.Instance.StartStashDialog();
-                return;
-            }
-
-            Application.Run(new FormCommandlineHelp());
+            return string.Empty;
         }
     }
 }
