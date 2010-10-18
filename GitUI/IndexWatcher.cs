@@ -2,11 +2,15 @@
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
+using GitCommands;
 
 namespace GitUI
 {
     public class IndexWatcher
     {
+        public delegate void ChangeEventHandler();
+        public ChangeEventHandler Changed;
+
         public IndexWatcher()
         {
             if (GitIndexWatcher == null)
@@ -16,9 +20,16 @@ namespace GitUI
                 SetFileSystemWatcher();
             }
 
+            Settings.WorkingDirChanged += new Settings.WorkingDirChangedHandler(Settings_WorkingDirChanged);
+
             IndexChanged = true;
             GitIndexWatcher.Changed += new FileSystemEventHandler(fileSystemWatcher_Changed);
             RefsWatcher.Changed += new FileSystemEventHandler(fileSystemWatcher_Changed);
+        }
+
+        void Settings_WorkingDirChanged(string oldDir, string newDir)
+        {
+            SetFileSystemWatcher();
         }
 
         private void SetFileSystemWatcher()
@@ -75,24 +86,18 @@ namespace GitUI
         void fileSystemWatcher_Changed(object sender, FileSystemEventArgs e)
         {
             IndexChanged = true;
+            Changed();
         }
 
         public void Reset()
         {
-            if (Path != GitCommands.Settings.WorkingDirGitDir() ||
-                enabled != GitCommands.Settings.UseFastChecks)
-                SetFileSystemWatcher();
-
             IndexChanged = false;
         }
 
         public void Clear()
         {
-            if (Path != GitCommands.Settings.WorkingDirGitDir() ||
-                enabled != GitCommands.Settings.UseFastChecks)
-                SetFileSystemWatcher();
-
             IndexChanged = true;
+            Changed();
         }
     }
 }

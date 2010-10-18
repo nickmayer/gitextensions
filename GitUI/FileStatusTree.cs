@@ -16,7 +16,11 @@ namespace GitUI
         {
             InitializeComponent();
             Translate();
-            
+            _indexWatcher.Changed += new IndexWatcher.ChangeEventHandler(IndexWatcher_onIndexChanged);
+        }
+
+        private void IndexWatcher_onIndexChanged()
+        {
         }
     }
 }

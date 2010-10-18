@@ -27,7 +27,7 @@ namespace GitUI
 
         private GitCommands.GitCommands gitGetUnstagedCommand = new GitCommands.GitCommands();
         private readonly SynchronizationContext syncContext;
-        private FileSystemWatcher watcher = new FileSystemWatcher();
+        private IndexWatcher watcher = new IndexWatcher();
         private int nextUpdate = 0;
 
         public ToolStripGitStatus()
@@ -40,43 +40,10 @@ namespace GitUI
 
             InitializeComponent();
 
-            Settings.WorkingDirChanged += new Settings.WorkingDirChangedHandler(Settings_WorkingDirChanged);
-
             // Setup a file watcher to detect changes to our files, or the .git repo files. When they
             // change, we'll update our status.
-            watcher.Changed += new FileSystemEventHandler(watcher_Changed);
-            watcher.Created += new FileSystemEventHandler(watcher_Changed);
-            watcher.Deleted += new FileSystemEventHandler(watcher_Changed);
-            watcher.Error += new ErrorEventHandler(watcher_Error);
-            watcher.IncludeSubdirectories = true;
-
-            try
-            {
-                watcher.Path = Settings.WorkingDir;
-                watcher.EnableRaisingEvents = true;
-            }
-            catch { }
+            watcher.Changed += new IndexWatcher.ChangeEventHandler(watcher_Changed);
             update();
-        }
-
-        void Settings_WorkingDirChanged(string oldDir, string newDir)
-        {
-            try
-            {
-                if (Directory.Exists(newDir))
-                {
-                    watcher.Path = newDir;
-                    watcher.EnableRaisingEvents = true;
-                }
-                else
-                {
-                    watcher.EnableRaisingEvents = false;
-                }
-
-
-                nextUpdate = Math.Min(nextUpdate, Environment.TickCount + UPDATE_DELAY);
-            }
-            catch { }
         }
 
         ~ToolStripGitStatus()
@@ -84,12 +51,7 @@ namespace GitUI
             gitGetUnstagedCommand.Kill();
         }
 
-        void watcher_Error(object sender, System.IO.ErrorEventArgs e)
-        {
-            nextUpdate = Math.Min( nextUpdate, Environment.TickCount + UPDATE_DELAY );
-        }
-
-        void watcher_Changed(object sender, FileSystemEventArgs e)
+        void watcher_Changed()
         {
             nextUpdate = Math.Min(nextUpdate, Environment.TickCount + UPDATE_DELAY);
         }
