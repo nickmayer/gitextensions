@@ -129,6 +129,9 @@ namespace GitUI
         public event GitUIEventHandler PreUpdateSubmodulesRecursive;
         public event GitUIEventHandler PostUpdateSubmodulesRecursive;
 
+        public event GitUIEventHandler PreMain;
+        public event GitUIEventHandler PostMain;
+
         public string GitCommand(string arguments)
         {
             return GitCommands.GitCommands.RunCmd(Settings.GitCommand, arguments);
@@ -163,6 +166,19 @@ namespace GitUI
             form.ShowDialog();
 
             InvokeEvent(PostBrowse);
+
+            return true;
+        }
+
+        public bool StartMainDialog()
+        {
+            if (!InvokeEvent(PreMain))
+                return false;
+
+            FormMain form = new FormMain();
+            form.ShowDialog();
+
+            InvokeEvent(PostMain);
 
             return true;
         }

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
+    <ProductVersion>9.0.30729</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{CF5B22E7-230F-4E50-BE88-C4F7023CED2C}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -112,6 +112,12 @@
       <DependentUpon>FileViewerMono.cs</DependentUpon>
     </Compile>
     <Compile Include="Editor\IFileViewer.cs" />
+    <Compile Include="FileStatusTree.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="FileStatusTree.Designer.cs">
+      <DependentUpon>FileStatusTree.cs</DependentUpon>
+    </Compile>
     <Compile Include="FormEditor.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -127,6 +133,12 @@
     <Compile Include="Editor\AsyncLoader.cs" />
     <Compile Include="FormFixHome.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="FormMain.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="FormMain.Designer.cs">
+      <DependentUpon>FormMain.cs</DependentUpon>
     </Compile>
     <Compile Include="FormStatus.cs">
       <SubType>Form</SubType>
@@ -618,6 +630,9 @@
       <DependentUpon>FileViewerMono.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="FileStatusTree.resx">
+      <DependentUpon>FileStatusTree.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="FormEditor.resx">
       <DependentUpon>FormEditor.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -669,6 +684,9 @@
     <EmbeddedResource Include="FormCherryPickCommitSmall.resx">
       <DependentUpon>FormCherryPickCommitSmall.cs</DependentUpon>
       <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="FormMain.resx">
+      <DependentUpon>FormMain.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="SpellChecker\EditNetSpell.resx">
       <DependentUpon>EditNetSpell.cs</DependentUpon>

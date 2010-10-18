@@ -10,7 +10,7 @@ using GitUI.Plugin;
 using GitUI.Statistics;
 using GitUIPluginInterfaces;
 using PatchApply;
-using ResourceManager.Translation;
+//using ResourceManager.Translation;
 using System.Text;
 
 namespace GitUI

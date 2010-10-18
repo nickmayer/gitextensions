@@ -206,6 +206,9 @@ namespace GitExtensions
                     case "stash":
                         GitUICommands.Instance.StartStashDialog();
                         return;
+                    case "main":
+                        GitUICommands.Instance.StartMainDialog();
+                        return;
                     default:
                         Application.Run(new FormCommandlineHelp());
                         return;
