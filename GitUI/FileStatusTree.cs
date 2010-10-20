@@ -47,7 +47,36 @@ namespace GitUI
 
         private void UpdateStatus()
         {
+            List<GitItemStatus> items = GitCommands.GitCommands.GitStatus(true);
 
+            treeView.SuspendLayout();
+            foreach( GitItemStatus item in items )
+            {
+                TreeNode node = treeView.Nodes[0];
+                string[] path = item.Name.Split( '/' );
+                foreach( string nodeName in path )
+                {
+                    NodeTag tag = (NodeTag) node.Tag;
+                    if (tag.IsPopulated)
+                    {
+                        TreeNode[] matchingNodes = node.Nodes.Find(nodeName, false);
+                        if (matchingNodes.Length > 0)
+                        {
+                            node = matchingNodes[0];
+                            node.ForeColor = Color.Red;
+                        }
+                        else
+                        {
+                            // New file. We need to add it. TODO: Sort properly.
+                            node = node.Nodes.Add(nodeName);
+                            node.Name = nodeName;
+                            node.ForeColor = Color.Blue;
+                            break;
+                        }
+                    }
+                }
+            }
+            treeView.ResumeLayout();
         }
 
         private void BuildTree()
@@ -85,6 +114,7 @@ namespace GitUI
             {
                 TreeNode treeNode = new TreeNode(gitNode.Name);
                 treeNode.Tag = new NodeTag(gitNode);
+                treeNode.Name = gitNode.Name;
 
                 GitItem gitItem = gitNode as GitItem;
                 bool isFolder = gitItem == null || gitItem.ItemType == "tree" || gitItem.ItemType == "commit";
@@ -106,6 +136,8 @@ namespace GitUI
             }            
 
             treeView.ResumeLayout();
+
+            UpdateStatus();
         }
     }
 }

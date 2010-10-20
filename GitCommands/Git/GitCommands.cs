@@ -1750,7 +1750,13 @@ namespace GitCommands
                 {
                     if (statusString.StartsWith("#\tnew file:"))
                     {
-                        ProcessStatusNewFile(statusString, gitItemStatusList);
+                        gitItemStatusList.Add(
+                            new GitItemStatus
+                            {
+                                IsNew = true,
+                                IsTracked = true,
+                                Name = statusString.Substring(statusString.LastIndexOf(':') + 1).Trim()
+                            });
                     }
                 }
             }
@@ -1784,60 +1790,50 @@ namespace GitCommands
 
         public static List<GitItemStatus> GitStatus(bool untracked)
         {
-            var status = RunCmd(Settings.GitCommand, untracked ? "status --untracked=all" : "status");
-            var statusStrings = status.Split('\n');
+            string status = RunCmd(Settings.GitCommand, "status -z --porcelain" + (!untracked ? " --untracked-files=no" : ""));
+            string[] statusStrings = status.Split(new char[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
 
-            var gitItemStatusList = new List<GitItemStatus>();
+            List<GitItemStatus> gitItemStatusList = new List<GitItemStatus>();
 
-            foreach (var statusString in statusStrings)
+            foreach (string statusString in statusStrings)
             {
-                if (statusString.StartsWith("#\tnew file:"))
+                string[] splitStatus = statusString.Split(new char[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (splitStatus.Length != 2)
+                    continue;
+
+                GitItemStatus newItem = new GitItemStatus(splitStatus[1]);
+                switch (splitStatus[0])
                 {
-                    ProcessStatusNewFile(statusString, gitItemStatusList);
+                    case "M": // modified
+                        newItem.IsTracked = true;
+                        newItem.IsChanged = true;
+                        break;
+                    case "A": // added
+                        newItem.IsTracked = false;
+                        newItem.IsNew = true;
+                        break;
+                    case "D": // deleted
+                        newItem.IsTracked = true;
+                        newItem.IsDeleted = true;
+                        break;
+                    case "R": // renamed
+                        newItem.IsTracked = false;
+                        newItem.IsChanged = true;
+                        break;
+                    case "C": // copied
+                        newItem.IsTracked = false;
+                        newItem.IsChanged = true;
+                        break;
+                    case "U": // updated but unmerged
+                        newItem.IsTracked = true;
+                        newItem.IsChanged = true;
+                        break;
                 }
-                else if (statusString.StartsWith("#\tdeleted:"))
-                {
-                    gitItemStatusList.Add(
-                        new GitItemStatus
-                            {
-                                IsDeleted = true,
-                                IsTracked = true,
-                                Name = statusString.Substring(statusString.LastIndexOf(':') + 1).Trim()
-                            });
-                }
-                else if (statusString.StartsWith("#\tmodified:"))
-                {
-                    gitItemStatusList.Add(
-                        new GitItemStatus
-                            {
-                                IsChanged = true,
-                                IsTracked = true,
-                                Name = statusString.Substring(statusString.LastIndexOf(':') + 1).Trim()
-                            });
-                }
-                else if (statusString.StartsWith("#\t"))
-                {
-                    gitItemStatusList.Add(
-                        new GitItemStatus
-                            {
-                                IsNew = true,
-                                Name = statusString.Substring(2).Trim()
-                            });
-                }
+
+                gitItemStatusList.Add(newItem);
             }
 
             return gitItemStatusList;
-        }
-
-        private static void ProcessStatusNewFile(string statusString, ICollection<GitItemStatus> gitItemStatusList)
-        {
-            gitItemStatusList.Add(
-                new GitItemStatus
-                    {
-                        IsNew = true,
-                        IsTracked = true,
-                        Name = statusString.Substring(statusString.LastIndexOf(':') + 1).Trim()
-                    });
         }
 
         public static string GetCurrentChanges(string name, bool staged, string extraDiffArguments)

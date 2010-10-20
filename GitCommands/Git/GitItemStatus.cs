@@ -7,6 +7,15 @@ namespace GitCommands
 {
     public class GitItemStatus
     {
+        public GitItemStatus( string aName )
+        {
+            Name = aName;
+            IsTracked = false;
+            IsDeleted = false;
+            IsChanged = false;
+            IsNew = false;
+        }
+
         public GitItemStatus()
         {
             IsTracked = false;
